@@ -8,12 +8,14 @@ const jwt = require('jsonwebtoken');
 //create instance of express
 const app = express();
 const port = process.env.PORT || 4000;
-app.get('/', (req, res) => res.send('Hello World!'));
+
 const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
-const mongourl = 'mongodb+srv://leon:upKBLprHgHxsJNB1@cluster0.9iiutan.mongodb.net/inventarios';//Deberia estar en archivo .env pero para facilidad de evaluacion se dejo aca
-const SECRET = '123456';//Deberia estar en archivo .env pero para facilidad de evaluacion se dejo aca
+const mongourl = process.env.MONGODB_URI || 'mongodb://localhost:27017/empresa';
+const SECRET = process.env.SECRET || '123456';//Deberia estar en archivo .env pero para facilidad de evaluacion se dejo aca
+
+app.get('/', (req, res) => res.send('Hello World!'));
 
 //connect to mongodb
 mongoose.connect(mongourl, { useNewUrlParser: true });
@@ -48,11 +50,14 @@ const User = mongoose.model('User', userSchema);
 const Empresa = mongoose.model('Empresa', empresaSchema);
 const Productos = mongoose.model('Productos', productosSchema);
 
-function auth(role){
-    role = role=="admin"?"a":"e";
+//generar middleware para autenticacion
+function auth(...role){
+    for(let i=0;i<role.length;i++){
+        role[i] = role[i]=="admin"?"a":"e";
+    }
     return (req, res, next) => {
-        const token = req.headers['authorization'];
-        console.log(token)
+        const token = req.headers['authorization'] || req.cookies['token'];
+        // console.log(token)
         if(token == null){
             return res.sendStatus(401);
         }
@@ -64,7 +69,7 @@ function auth(role){
                 }
                 else{
                     User.findOne({_id: user.id}).then((user) => {
-                        if(user.role == role){
+                    if(role.includes(user.role)){
                             next();
                         }else{
                             return res.sendStatus(403);
@@ -80,7 +85,7 @@ function auth(role){
 }
 
 
-//create empresa
+//crear empresa autenticando como admin
 app.put('/empresa',auth("admin"), (req, res) => {
     const empresa = new Empresa({
         _id: new mongoose.Types.ObjectId(),
@@ -92,15 +97,16 @@ app.put('/empresa',auth("admin"), (req, res) => {
     });
     empresa.save().then(() => {
         console.log('Empresa created')
-        res.send('Empresa created')
+        res.send({msg: 'Empresa created', id: empresa._id})
     }).catch((err) =>{
         console.log(err)
         res.status(500).send('Error')
     });
 });
 
-//create productos
-app.put('/producto',auth("admin"), (req, res) => {
+//crear productos 
+app.put('/producto/:id',auth("admin"), (req, res) => {
+    const idEmpresa = req.params.id;
     const productos = new Productos({
         _id: new mongoose.Types.ObjectId(),
         name: req.body.name,
@@ -110,24 +116,24 @@ app.put('/producto',auth("admin"), (req, res) => {
         image: req.body.image
     });
 
-    Empresa.findOne({_id: '6483a3cb7e63e8b072f11085'}).then(empresa => {
+    Empresa.findOne({_id: idEmpresa}).then(empresa => {
         if(empresa == null){
             console.log('Empresa not found')
-            // res.status(404).send('Error')
+            res.status(404).send('Error')
         }else{
             empresa.productos.push(productos);
             empresa.save();
             console.log('Producto created')
-            // res.send('Producto created')
+            res.send('Producto created')
         }
     }).catch((err) =>{
         console.log(err)
-        // res.status(500).send('Error')
+        res.status(500).send('Error')
     });
 });
 
 //get all empresas
-app.get('/empresas',auth("ext"), (req, res) => {
+app.get('/empresas',auth("ext","admin"), (req, res) => {
     Empresa.find({},{_id:1,name:1}).then((empresas) => {
         res.send(empresas)
     }).catch((err) =>{
@@ -137,7 +143,7 @@ app.get('/empresas',auth("ext"), (req, res) => {
 });
 
 //get single empresa
-app.get('/empresa/:id',auth("ext"), (req, res) => {
+app.get('/empresa/:id',auth("ext","admin"), (req, res) => {
     Empresa.findOne({_id: req.params.id}).then((empresa) => {
         res.send(empresa)
     }).catch((err) =>{
@@ -171,27 +177,25 @@ app.post('/empresa/:id',auth("admin"), (req, res) => {
 });
 
 //update producto
-app.post('/producto/:id',auth("admin"), (req, res) => {
-    Productos.updateOne({_id: req.params.id}, {name: req.body.name, description: req.body.description, price: req.body.price, stock: req.body.stock, image: req.body.image}).then(() => {
-        console.log('Producto updated')
+app.post('/producto/:idempresa/:idproducto',auth("admin"), (req, res) => {
+    Empresa.updateOne({_id: req.params.idempresa, "productos._id": req.params.idproducto}, {"productos.$.name": req.body.name, "productos.$.description": req.body.description, "productos.$.price": req.body.price, "productos.$.stock": req.body.stock, "productos.$.image": req.body.image}).then((result) => {
+        console.log('Producto updated: ' + result)
         res.send('Producto updated')
     }).catch((err) =>{
         console.log(err)
         res.status(500).send('Error')
-    }
-    );
+    });
 });
 
 //delete producto
-app.delete('/producto/:id',auth("admin"), (req, res) => {
-    Productos.deleteOne({_id: req.params.id}).then(() => {
-        console.log('Producto deleted')
+app.delete('/producto/:idempresa/:idproducto',auth("admin"), (req, res) => {
+    Empresa.updateOne({_id: req.params.idempresa}, {$pull: {productos: {_id: req.params.idproducto}}}).then((result) => {
+        console.log('Producto deleted ' + result)
         res.send('Producto deleted')
     }).catch((err) =>{
         console.log(err)
         res.status(500).send('Error')
-    }
-    );
+    });
 });
 
 function generatePDF(id){
