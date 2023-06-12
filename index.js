@@ -57,7 +57,7 @@ function auth(...role){
         role[i] = role[i]=="admin"?"a":"e";
     }
     return (req, res, next) => {
-        const token = req.headers['authorization'] || req.cookies['token'];
+        const token = req.headers['authorization'] || (req.cookies?req.cookies['token'] : null)
         // console.log(token)
         if(token == null){
             return res.sendStatus(401);
