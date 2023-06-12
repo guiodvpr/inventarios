@@ -1,3 +1,6 @@
 # Usuarios
-admin: admin
-user: 123
+
+| Nombre | Contraseña |
+|-------:|------------|
+|   admin| admin      |
+|    user| 123        |
