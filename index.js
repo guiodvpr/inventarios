@@ -5,10 +5,11 @@ const bcrypt = require('bcrypt');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
+//charge .env file
+require('dotenv').config();
 //create instance of express
 const app = express();
 const port = process.env.PORT || 4000;
-
 const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -276,4 +277,4 @@ app.post('/logout', (req, res) => {
 //static folder
 app.use(express.static('public'));
 
-app.listen(port, () => console.log('Listening on port 4000!'));
+app.listen(port, () => console.log('Listening on port '+port));
